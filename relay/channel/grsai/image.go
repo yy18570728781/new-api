@@ -14,6 +14,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
@@ -120,9 +121,11 @@ func grsaiImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.Re
 
 	task, pollErr := pollTaskResult(info, submitResp.Data.ID)
 	if pollErr != nil {
+		recordGrsaiDrawingLog(info, imageReqFromRelayInfo(info), &taskResult{ID: submitResp.Data.ID, Status: "failed"}, nil, pollErr.Error())
 		return nil, pollErr
 	}
 	if task.Status == "failed" {
+		recordGrsaiDrawingLog(info, imageReqFromRelayInfo(info), task, nil, firstNonEmpty(task.Error, task.FailureReason))
 		return nil, types.WithOpenAIError(types.OpenAIError{
 			Message: firstNonEmpty(task.Error, task.FailureReason, "image generation failed"),
 			Type:    "grsai_image_error",
@@ -147,12 +150,15 @@ func grsaiImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.Re
 		imageResponse.Data = append(imageResponse.Data, dto.ImageData{Url: task.URL})
 	}
 	if len(imageResponse.Data) == 0 {
+		recordGrsaiDrawingLog(info, imageReqFromRelayInfo(info), task, nil, "no images generated")
 		return nil, types.NewOpenAIError(fmt.Errorf("no images generated"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
 	if info.PriceData.UsePrice {
 		info.PriceData.AddOtherRatio("n", float64(len(imageResponse.Data)))
 	}
+
+	recordGrsaiDrawingLog(info, imageReqFromRelayInfo(info), task, imageResponse, "")
 
 	responseBody, err := common.Marshal(imageResponse)
 	if err != nil {
@@ -166,6 +172,88 @@ func grsaiImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.Re
 	}
 
 	return &dto.Usage{}, nil
+}
+
+func imageReqFromRelayInfo(info *relaycommon.RelayInfo) *dto.ImageRequest {
+	if info == nil {
+		return nil
+	}
+	if req, ok := info.Request.(*dto.ImageRequest); ok {
+		return req
+	}
+	return nil
+}
+
+func recordGrsaiDrawingLog(info *relaycommon.RelayInfo, request *dto.ImageRequest, task *taskResult, imageResponse *dto.ImageResponse, failReason string) {
+	if info == nil || task == nil || strings.TrimSpace(task.ID) == "" {
+		return
+	}
+
+	now := time.Now().UnixMilli()
+	progress := "100%"
+	status := "SUCCESS"
+	code := 1
+	if strings.TrimSpace(failReason) != "" || strings.EqualFold(task.Status, "failed") {
+		status = "FAILURE"
+		code = 0
+		if task.Progress > 0 {
+			progress = fmt.Sprintf("%d%%", task.Progress)
+		} else {
+			progress = "0%"
+		}
+	}
+
+	imageURL := strings.TrimSpace(task.URL)
+	if imageResponse != nil && len(imageResponse.Data) > 0 && strings.TrimSpace(imageResponse.Data[0].Url) != "" {
+		imageURL = strings.TrimSpace(imageResponse.Data[0].Url)
+	}
+
+	prompt := ""
+	modelName := info.OriginModelName
+	if request != nil {
+		prompt = request.Prompt
+		if modelName == "" {
+			modelName = request.Model
+		}
+	}
+
+	record := &model.Midjourney{
+		Code:       code,
+		UserId:     info.UserId,
+		Action:     "IMAGINE",
+		MjId:       task.ID,
+		Prompt:     prompt,
+		PromptEn:   prompt,
+		State:      task.Status,
+		SubmitTime: info.StartTime.UnixMilli(),
+		StartTime:  info.StartTime.UnixMilli(),
+		FinishTime: now,
+		ImageUrl:   imageURL,
+		Status:     status,
+		Progress:   progress,
+		FailReason: strings.TrimSpace(failReason),
+		ChannelId:  info.ChannelId,
+		Description: modelName,
+	}
+
+	if old := model.GetByOnlyMJId(task.ID); old != nil {
+		old.Code = record.Code
+		old.Action = record.Action
+		old.Prompt = record.Prompt
+		old.PromptEn = record.PromptEn
+		old.State = record.State
+		old.StartTime = record.StartTime
+		old.FinishTime = record.FinishTime
+		old.ImageUrl = record.ImageUrl
+		old.Status = record.Status
+		old.Progress = record.Progress
+		old.FailReason = record.FailReason
+		old.ChannelId = record.ChannelId
+		old.Description = record.Description
+		_ = old.Update()
+		return
+	}
+	_ = record.Insert()
 }
 
 func pollTaskResult(info *relaycommon.RelayInfo, taskID string) (*taskResult, *types.NewAPIError) {

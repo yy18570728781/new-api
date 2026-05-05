@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -269,8 +270,11 @@ func GetAllMidjourney(c *gin.Context) {
 	total := model.CountAllTasks(queryParams)
 
 	if setting.MjForwardUrlEnabled {
+		forwardBaseURL := getMjForwardBaseURL(c)
 		for i, midjourney := range items {
-			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId
+			if shouldUseMjForwardImage(midjourney) {
+				midjourney.ImageUrl = forwardBaseURL + "/mj/image/" + midjourney.MjId
+			}
 			items[i] = midjourney
 		}
 	}
@@ -294,12 +298,44 @@ func GetUserMidjourney(c *gin.Context) {
 	total := model.CountAllUserTask(userId, queryParams)
 
 	if setting.MjForwardUrlEnabled {
+		forwardBaseURL := getMjForwardBaseURL(c)
 		for i, midjourney := range items {
-			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId
+			if shouldUseMjForwardImage(midjourney) {
+				midjourney.ImageUrl = forwardBaseURL + "/mj/image/" + midjourney.MjId
+			}
 			items[i] = midjourney
 		}
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func getMjForwardBaseURL(c *gin.Context) string {
+	scheme := "http"
+	if proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); proto != "" {
+		scheme = proto
+	} else if c.Request.TLS != nil {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+	}
+	if host != "" {
+		return fmt.Sprintf("%s://%s", scheme, host)
+	}
+
+	return strings.TrimRight(system_setting.ServerAddress, "/")
+}
+
+func shouldUseMjForwardImage(task *model.Midjourney) bool {
+	if task == nil {
+		return false
+	}
+	if common.IsImageGenerationModel(task.Description) {
+		return false
+	}
+	return strings.TrimSpace(task.MjId) != ""
 }

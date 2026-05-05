@@ -108,6 +108,33 @@ API.interceptors.response.use(
 
 // playground
 
+const IMAGE_MODEL_PATTERNS = ['gpt-image-', 'dall-e', 'nano-banana', 'imagen-', 'flux'];
+
+const isImageGenerationModel = (modelName) => {
+  const normalized = (modelName || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return IMAGE_MODEL_PATTERNS.some((pattern) => normalized.includes(pattern));
+};
+
+const getTextFromMessageContent = (content) => {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    const textPart = content.find((item) => item?.type === 'text');
+    return textPart?.text || '';
+  }
+  return '';
+};
+
+const getImageUrlsFromMessageContent = (content) => {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((item) => item?.type === 'image_url' && item?.image_url?.url)
+    .map((item) => item.image_url.url.trim())
+    .filter(Boolean);
+};
+
 // 构建API请求负载
 export const buildApiPayload = (
   messages,
@@ -119,6 +146,30 @@ export const buildApiPayload = (
     .filter(isValidMessage)
     .map(formatMessageForAPI)
     .filter(Boolean);
+
+  if (isImageGenerationModel(inputs.model)) {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((message) => message?.role === MESSAGE_ROLES.USER);
+    const prompt = getTextFromMessageContent(lastUserMessage?.content).trim();
+    const imageUrls = getImageUrlsFromMessageContent(lastUserMessage?.content);
+    const mergedPrompt = [systemPrompt?.trim(), prompt].filter(Boolean).join('\n\n');
+
+    const payload = {
+      model: inputs.model,
+      group: inputs.group,
+      prompt: mergedPrompt || prompt,
+      n: 1,
+      size: '1024x1024',
+    };
+
+    if (imageUrls.length > 0) {
+      payload.image = imageUrls.length === 1 ? imageUrls[0] : imageUrls;
+      payload.urls = imageUrls;
+    }
+
+    return payload;
+  }
 
   // 如果有系统提示，插入到消息开头
   if (systemPrompt && systemPrompt.trim()) {

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -176,8 +178,14 @@ func pollTaskResult(info *relaycommon.RelayInfo, taskID string) (*taskResult, *t
 	queryURL := baseURL + "/v1/draw/result"
 	requestBody, _ := common.Marshal(map[string]any{"id": taskID})
 
-	for attempt := 0; attempt < 90; attempt++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	const (
+		maxAttempts         = 90
+		perRequestTimeout   = 15 * time.Second
+		pollInterval        = 2 * time.Second
+	)
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), perRequestTimeout)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, queryURL, bytes.NewBuffer(requestBody))
 		if err != nil {
 			cancel()
@@ -189,6 +197,10 @@ func pollTaskResult(info *relaycommon.RelayInfo, taskID string) (*taskResult, *t
 		resp, err := client.Do(req)
 		cancel()
 		if err != nil {
+			if isRetryablePollError(err) {
+				time.Sleep(pollInterval)
+				continue
+			}
 			return nil, types.NewError(err, types.ErrorCodeDoRequestFailed)
 		}
 
@@ -222,7 +234,7 @@ func pollTaskResult(info *relaycommon.RelayInfo, taskID string) (*taskResult, *t
 			return &resultResp.Data, nil
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(pollInterval)
 	}
 
 	return nil, types.WithOpenAIError(types.OpenAIError{
@@ -230,6 +242,17 @@ func pollTaskResult(info *relaycommon.RelayInfo, taskID string) (*taskResult, *t
 		Type:    "grsai_timeout",
 		Code:    "timeout",
 	}, http.StatusGatewayTimeout)
+}
+
+func isRetryablePollError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 func extractImageURLs(request dto.ImageRequest) []string {

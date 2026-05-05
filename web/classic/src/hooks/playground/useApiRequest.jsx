@@ -41,6 +41,15 @@ export const useApiRequest = (
 ) => {
   const { t } = useTranslation();
 
+  const isImageRequestPayload = useCallback(
+    (payload) =>
+      !!payload &&
+      typeof payload === 'object' &&
+      typeof payload.prompt === 'string' &&
+      !Array.isArray(payload.messages),
+    [],
+  );
+
   // 处理消息自动关闭逻辑的公共函数
   const applyAutoCollapseLogic = useCallback(
     (message, isThinkingComplete = true) => {
@@ -174,6 +183,9 @@ export const useApiRequest = (
   // 非流式请求
   const handleNonStreamRequest = useCallback(
     async (payload) => {
+      const endpoint = isImageRequestPayload(payload)
+        ? API_ENDPOINTS.IMAGE_GENERATIONS
+        : API_ENDPOINTS.CHAT_COMPLETIONS;
       setDebugData((prev) => ({
         ...prev,
         request: payload,
@@ -185,7 +197,7 @@ export const useApiRequest = (
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
       try {
-        const response = await fetch(API_ENDPOINTS.CHAT_COMPLETIONS, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -238,6 +250,43 @@ export const useApiRequest = (
           response: JSON.stringify(data, null, 2),
         }));
         setActiveDebugTab(DEBUG_TABS.RESPONSE);
+
+        if (Array.isArray(data.data)) {
+          const imageItems = data.data
+            .filter((item) => item?.url)
+            .map((item) => ({
+              type: 'image_url',
+              image_url: { url: item.url },
+            }));
+          const revisedPrompt = data.data
+            .map((item) => item?.revised_prompt)
+            .find((prompt) => typeof prompt === 'string' && prompt.trim() !== '');
+          const content =
+            revisedPrompt && revisedPrompt.trim() !== ''
+              ? [{ type: 'text', text: revisedPrompt }, ...imageItems]
+              : imageItems;
+
+          setMessage((prevMessage) => {
+            const newMessages = [...prevMessage];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage?.status === MESSAGE_STATUS.LOADING) {
+              const autoCollapseState = applyAutoCollapseLogic(
+                lastMessage,
+                true,
+              );
+
+              newMessages[newMessages.length - 1] = {
+                ...lastMessage,
+                content,
+                reasoningContent: '',
+                status: MESSAGE_STATUS.COMPLETE,
+                ...autoCollapseState,
+              };
+            }
+            return newMessages;
+          });
+          return;
+        }
 
         if (data.choices?.[0]) {
           const choice = data.choices[0];
@@ -297,7 +346,14 @@ export const useApiRequest = (
         });
       }
     },
-    [setDebugData, setActiveDebugTab, setMessage, t, applyAutoCollapseLogic],
+    [
+      isImageRequestPayload,
+      setDebugData,
+      setActiveDebugTab,
+      setMessage,
+      t,
+      applyAutoCollapseLogic,
+    ],
   );
 
   // SSE请求
@@ -537,13 +593,13 @@ export const useApiRequest = (
   // 发送请求
   const sendRequest = useCallback(
     (payload, isStream) => {
-      if (isStream) {
+      if (isStream && !isImageRequestPayload(payload)) {
         handleSSE(payload);
       } else {
         handleNonStreamRequest(payload);
       }
     },
-    [handleSSE, handleNonStreamRequest],
+    [handleSSE, handleNonStreamRequest, isImageRequestPayload],
   );
 
   return {

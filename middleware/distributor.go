@@ -325,8 +325,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-		// playground chat completions
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") || strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") {
+		// playground chat/image requests
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err
@@ -334,6 +334,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		modelRequest.Model = req.Model
 		modelRequest.Group = req.Group
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
+		if strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") {
+			c.Set("relay_mode", relayconstant.RelayModeImagesGenerations)
+		}
 	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {

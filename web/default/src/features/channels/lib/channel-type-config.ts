@@ -116,6 +116,18 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       baseUrl: 'Default: https://api.replicate.com',
     },
   },
+  58: {
+    id: 58,
+    name: CHANNEL_TYPES[58],
+    icon: 'google',
+    defaultBaseUrl: 'https://grsai.dakka.com.cn',
+    hints: {
+      baseUrl: 'Default: https://grsai.dakka.com.cn',
+      key: 'Format: Bearer API key',
+      models: 'gpt-image-2,nano-banana-fast,nano-banana-pro',
+      other: 'Supports native draw APIs and Gemini-compatible nano-banana models',
+    },
+  },
 }
 
 /**

@@ -75,6 +75,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeReplicate
 	case constant.ChannelTypeCodex:
 		apiType = constant.APITypeCodex
+	case constant.ChannelTypeGrsAI:
+		apiType = constant.APITypeGrsAI
 	case constant.ChannelTypeCustom:
 		apiType = constant.APITypeOpenAI
 	}

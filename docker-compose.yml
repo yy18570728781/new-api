@@ -16,12 +16,14 @@ version: '3.4' # For compatibility with older Docker versions
 
 services:
   new-api:
-    image: calciumion/new-api:latest
+    build:
+      context: .
+    image: new-api:grsai-local
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - /www/wwwroot/new-api-code/data:/data
       - /www/wwwroot/new-api-code/logs:/app/logs

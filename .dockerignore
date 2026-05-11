@@ -7,4 +7,11 @@ Makefile
 docs
 .eslintcache
 .gocache
-/web/node_modules
+node_modules
+web/default/node_modules
+web/classic/node_modules
+web/*/node_modules
+.tmp
+logs
+new-api-updated
+*.log

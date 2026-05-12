@@ -97,6 +97,9 @@ export function getChannelTypeIcon(type: number): string {
     12: 'OpenAI', // API2GPT
     13: 'OpenAI', // AIGC2D
     9: 'OpenAI', // AILS
+
+    // GeekAI
+    59: 'OpenAI', // GeekAI
   }
 
   return TYPE_TO_ICON[type] || 'OpenAI'
@@ -450,7 +453,7 @@ export function channelNeedsAttention(channel: Channel): boolean {
     channel.channel_info?.is_multi_key &&
     channel.channel_info.multi_key_status_list &&
     Object.keys(channel.channel_info.multi_key_status_list).length >=
-      channel.channel_info.multi_key_size
+    channel.channel_info.multi_key_size
   ) {
     return true
   }
@@ -468,7 +471,7 @@ export function getAttentionReason(channel: Channel): string | null {
     channel.channel_info?.is_multi_key &&
     channel.channel_info.multi_key_status_list &&
     Object.keys(channel.channel_info.multi_key_status_list).length >=
-      channel.channel_info.multi_key_size
+    channel.channel_info.multi_key_size
   ) {
     return 'All keys disabled'
   }

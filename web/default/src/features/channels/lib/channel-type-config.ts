@@ -128,6 +128,17 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       other: 'Supports native draw APIs and Gemini-compatible nano-banana models',
     },
   },
+  59: {
+    id: 59,
+    name: CHANNEL_TYPES[59],
+    icon: 'openai',
+    defaultBaseUrl: 'https://www.geeknow.top',
+    hints: {
+      baseUrl: 'Default: https://www.geeknow.top',
+      key: 'GeekAI API Key',
+      models: 'geek-chat,geek-image',
+    },
+  },
 }
 
 /**
